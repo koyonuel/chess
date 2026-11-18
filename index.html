@@ -1,364 +1,130 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Chess vs Stockfish</title>
-
-<link rel="stylesheet"
-href="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/chessboard.min.css"/>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chess</title>
 
 <style>
 body{
-    margin:0;
     background:#1e1e1e;
     color:white;
     font-family:Arial,sans-serif;
     text-align:center;
 }
 
-h1{
-    margin-top:20px;
-}
-
-.container{
-    max-width:1000px;
-    margin:auto;
-    padding:20px;
-}
-
 #board{
-    width:600px;
-    max-width:95vw;
-    margin:auto;
+    width:480px;
+    margin:20px auto;
+    display:grid;
+    grid-template-columns:repeat(8,60px);
 }
 
-.controls{
-    margin:15px 0;
-}
-
-button, select{
-    padding:10px 15px;
+.square{
+    width:60px;
+    height:60px;
     border:none;
-    border-radius:8px;
-    margin:5px;
-    font-size:16px;
-}
-
-button{
-    background:#4CAF50;
-    color:white;
+    font-size:40px;
     cursor:pointer;
 }
 
-button:hover{
-    background:#45a049;
+.light{
+    background:#f0d9b5;
 }
 
-#status{
-    font-size:22px;
-    margin:10px;
-    font-weight:bold;
+.dark{
+    background:#b58863;
 }
 
-.panel{
-    margin-top:20px;
-    background:#2a2a2a;
-    padding:15px;
-    border-radius:10px;
+.selected{
+    outline:4px solid yellow;
 }
 
-#history{
-    text-align:left;
-    max-height:200px;
-    overflow-y:auto;
-}
-
-.clock{
-    font-size:20px;
-    margin-bottom:15px;
+button{
+    padding:10px;
+    margin:5px;
 }
 </style>
 </head>
+
 <body>
 
-<div class="container">
+<h1>♟ Chess</h1>
 
-<h1>♟ Chess vs Stockfish</h1>
+<button onclick="resetBoard()">New Game</button>
 
-<div class="controls">
-
-<select id="difficulty">
-<option value="5">Easy</option>
-<option value="10" selected>Medium</option>
-<option value="15">Hard</option>
-<option value="20">Master</option>
-</select>
-
-<button onclick="newGame()">New Game</button>
-<button onclick="undoMove()">Undo</button>
-<button onclick="board.flip()">Flip Board</button>
-
-</div>
-
-<div class="clock">
-White: <span id="whiteTime">10:00</span>
-|
-Black: <span id="blackTime">10:00</span>
-</div>
-
-<div id="status">
-Your Turn
-</div>
+<p id="status">White to Move</p>
 
 <div id="board"></div>
 
-<div class="panel">
-
-<h3>Move History</h3>
-
-<div id="history">
-
-</div>
-
-</div>
-
-</div>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.13.4/chess.min.js"></script>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/chessboard.min.js"></script>
-
 <script>
+const startPos = [
+"♜","♞","♝","♛","♚","♝","♞","♜",
+"♟","♟","♟","♟","♟","♟","♟","♟",
+"","","","","","","","",
+"","","","","","","","",
+"","","","","","","","",
+"","","","","","","","",
+"♙","♙","♙","♙","♙","♙","♙","♙",
+"♖","♘","♗","♕","♔","♗","♘","♖"
+];
 
-const game = new Chess();
+let boardData=[...startPos];
+let selected=null;
 
-const stockfish = new Worker(
-'https://cdn.jsdelivr.net/npm/stockfish@16.0.0/src/stockfish.js'
-);
+function drawBoard(){
 
-let whiteSeconds = 600;
-let blackSeconds = 600;
+const board=document.getElementById("board");
+board.innerHTML="";
 
-const board = Chessboard('board',{
+for(let i=0;i<64;i++){
 
-    draggable:true,
-    position:'start',
+const sq=document.createElement("button");
 
-    onDragStart:function(source,piece){
+sq.className=
+"square " +
+(((Math.floor(i/8)+i)%2)
+?"dark":"light");
 
-        if(game.game_over()) return false;
-
-        if(game.turn() !== 'w') return false;
-
-        if(piece.search(/^b/) !== -1)
-            return false;
-    },
-
-    onDrop:function(source,target){
-
-        const move = game.move({
-            from:source,
-            to:target,
-            promotion:'q'
-        });
-
-        if(move === null){
-            return 'snapback';
-        }
-
-        updateHistory();
-        updateStatus();
-
-        setTimeout(makeAIMove,250);
-    },
-
-    onSnapEnd:function(){
-        board.position(game.fen());
-    }
-
-});
-
-function makeAIMove(){
-
-    if(game.game_over()) return;
-
-    let depth =
-    document.getElementById("difficulty").value;
-
-    stockfish.postMessage("uci");
-    stockfish.postMessage(
-        "position fen " + game.fen()
-    );
-    stockfish.postMessage(
-        "go depth " + depth
-    );
+if(selected===i){
+sq.classList.add("selected");
 }
 
-stockfish.onmessage = function(event){
+sq.textContent=boardData[i];
 
-    let line = event.data;
+sq.onclick=()=>clickSquare(i);
 
-    if(line.startsWith("bestmove")){
-
-        let move =
-        line.split(" ")[1];
-
-        if(move && move !== "(none)"){
-
-            game.move({
-                from:move.substring(0,2),
-                to:move.substring(2,4),
-                promotion:'q'
-            });
-
-            board.position(
-                game.fen()
-            );
-
-            updateHistory();
-            updateStatus();
-        }
-    }
-};
-
-function updateHistory(){
-
-    const moves =
-    game.history();
-
-    let html = "";
-
-    for(let i=0;i<moves.length;i+=2){
-
-        html +=
-            (Math.floor(i/2)+1) +
-            ". " +
-            moves[i] +
-            " " +
-            (moves[i+1] || "") +
-            "<br>";
-    }
-
-    document.getElementById(
-        "history"
-    ).innerHTML = html;
+board.appendChild(sq);
+}
 }
 
-function updateStatus(){
+function clickSquare(i){
 
-    let status = "";
+if(selected===null){
 
-    if(game.in_checkmate()){
-
-        status =
-        "🏆 Checkmate! " +
-        (game.turn() === "w"
-            ? "Black Wins"
-            : "White Wins");
-
-    }
-    else if(game.in_draw()){
-
-        status = "Draw!";
-
-    }
-    else{
-
-        status =
-        game.turn() === "w"
-        ? "Your Turn"
-        : "🤖 Stockfish Thinking...";
-
-        if(game.in_check()){
-            status += " (Check)";
-        }
-    }
-
-    document.getElementById(
-    "status"
-    ).innerText = status;
+if(boardData[i] !== ""){
+selected=i;
 }
 
-function undoMove(){
+}else{
 
-    game.undo();
-    game.undo();
+boardData[i]=boardData[selected];
+boardData[selected]="";
 
-    board.position(
-        game.fen()
-    );
+selected=null;
 
-    updateHistory();
-    updateStatus();
+drawBoard();
+}
+drawBoard();
 }
 
-function newGame(){
-
-    game.reset();
-
-    board.start();
-
-    whiteSeconds = 600;
-    blackSeconds = 600;
-
-    updateClocks();
-    updateHistory();
-    updateStatus();
+function resetBoard(){
+boardData=[...startPos];
+selected=null;
+drawBoard();
 }
 
-function updateClocks(){
-
-    let wm =
-    Math.floor(
-    whiteSeconds/60
-    );
-
-    let ws =
-    whiteSeconds%60;
-
-    let bm =
-    Math.floor(
-    blackSeconds/60
-    );
-
-    let bs =
-    blackSeconds%60;
-
-    document.getElementById(
-    "whiteTime"
-    ).textContent =
-    wm + ":" +
-    String(ws)
-    .padStart(2,"0");
-
-    document.getElementById(
-    "blackTime"
-    ).textContent =
-    bm + ":" +
-    String(bs)
-    .padStart(2,"0");
-}
-
-setInterval(() => {
-
-    if(game.game_over())
-        return;
-
-    if(game.turn()==='w')
-        whiteSeconds--;
-    else
-        blackSeconds--;
-
-    updateClocks();
-
-},1000);
-
-updateStatus();
-updateClocks();
-
+drawBoard();
 </script>
 
 </body>
